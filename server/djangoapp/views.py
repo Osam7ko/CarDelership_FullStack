@@ -49,59 +49,59 @@ def logout_request(request):
 # Create a `registration` view to handle sign up request
 @csrf_exempt
 def registration_request(request):
-    context = {}
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            username = data.get('userName')
+            password = data.get('password')
+            first_name = data.get('firstName')
+            last_name = data.get('lastName')
+            email = data.get('email')
 
-    data = json.loads(request.body)
-    username = data['userName']
-    password = data['password']
-    first_name = data['firstName']
-    last_name = data['lastName']
-    email = data['email']
-    username_exist = False
-    email_exist = False
-    try:
-        # Check if user already exists
-        User.objects.get(username=username)
-        username_exist = True
-    except:
-        # If not, simply log this is a new user
-        logger.debug("{} is new user".format(username))
+            if not username or not password:
+                return JsonResponse({"error": "Missing fields"}, status=400)
 
-    # If it is a new user
-    if not username_exist:
-        # Create user in auth_user table
-        user = User.objects.create_user(username=username, first_name=first_name, last_name=last_name,password=password, email=email)
-        # Login the user and redirect to list page
-        login(request, user)
-        data = {"userName":username,"status":"Authenticated"}
-        return JsonResponse(data)
-    else :
-        data = {"userName":username,"error":"Already Registered"}
-        return JsonResponse(data)
+            if User.objects.filter(username=username).exists():
+                return JsonResponse({"userName": username, "error": "Already Registered"}, status=400)
 
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                email=email
+            )
+            login(request, user)
+            return JsonResponse({"userName": username, "status": "Authenticated"}, status=201)
+
+        except Exception as e:
+            print(f"Error in registration: {e}")
+            return JsonResponse({"error": "Something went wrong"}, status=500)
+    else:
+        return JsonResponse({"error": "Invalid request method"}, status=405)
 # # Update the `get_dealerships` view to render the index page with
 #Update the `get_dealerships` render list of dealerships all by default, particular state if state is passed
 def get_dealerships(request, state="All"):
     if(state == "All"):
         endpoint = "/fetchDealers"
     else:
-        endpoint = "/fetchDealers/"+state
+        endpoint = "/fetchDealers/state/"+state
     dealerships = get_request(endpoint)
     return JsonResponse({"status":200,"dealers":dealerships})
 # Create a `get_dealer_reviews` view to render the reviews of a dealer
 def get_dealer_reviews(request, dealer_id):
-    # if dealer id has been provided
-    if(dealer_id):
-        endpoint = "/fetchReviews/dealer/"+str(dealer_id)
+    if dealer_id:
+        endpoint = "/fetchReviews/dealer/" + str(dealer_id)
         reviews = get_request(endpoint)
         for review_detail in reviews:
             response = analyze_review_sentiments(review_detail['review'])
-            print(response)
-            review_detail['sentiment'] = response['sentiment']
-        return JsonResponse({"status":200,"reviews":reviews})
+            if response and 'sentiment' in response:
+                review_detail['sentiment'] = response['sentiment']
+            else:
+                review_detail['sentiment'] = "neutral"  
+        return JsonResponse({"status": 200, "reviews": reviews})
     else:
-        return JsonResponse({"status":400,"message":"Bad Request"})
-
+        return JsonResponse({"status": 400, "message": "Bad Request"})
 # Create a `get_dealer_details` view to render the dealer details
 def get_dealer_details(request, dealer_id):
     if(dealer_id):
